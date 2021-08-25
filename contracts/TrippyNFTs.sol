@@ -80,15 +80,15 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
             userTotalBuys <= whitelistedSale.params.userMaxBuys,
             "TrippyNFTs: buys maxed out"
         );
-        uint256 totalBuys = whitelistedSale.totalBuys + toBeBought;
+        uint256 totalWhitelistedBuys = whitelistedSale.totalBuys + toBeBought;
         require(
-            totalBuys <= whitelistedSale.params.totalMaxBuys,
+            totalWhitelistedBuys <= whitelistedSale.params.totalMaxBuys,
             "TrippyNFTs: whitelisted sold out"
         );
         _mintMany(msg.sender, toBeBought);
         totalBuys += toBeBought;
         whitelistedSale.buys[msg.sender] = userTotalBuys;
-        whitelistedSale.totalBuys = totalBuys;
+        whitelistedSale.totalBuys = totalWhitelistedBuys;
     }
 
     function _mintMany(address _recipient, uint256 _amount) internal {
@@ -101,14 +101,14 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         totalIssued = issued;
     }
 
-    function _checkTime(SaleParams storage _params) internal {
+    function _checkTime(SaleParams storage _params) internal view {
         uint256 timestamp = block.timestamp;
         require(timestamp >= _params.start, "TrippyNFTs: before sale");
         require(timestamp <= _params.end, "TrippyNFTs: after sale");
     }
 
     function _verifyWhitelist(address _account, bytes memory _whitelistedSig)
-        internal
+        internal view
     {
         require(
             verifier.isValidSignatureNow(
