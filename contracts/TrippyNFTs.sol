@@ -31,6 +31,9 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
     // keccak256("trippy-nfts.access.is-whitelisted(address)")
     bytes32 internal constant DS_IS_WHITELISTED =
         0xc6570f378e38907781b14e02a9e9c55342ebe951a8bb72ea05e25cc035c728c6;
+    // keccak256("trippy-nfts.access.is-vip-buyer(address,uint256,uint256)")
+    bytes32 internal constant DS_IS_VIP_BUYER =
+        0xd56a2babab7800d0a1b3acae582dce8dcee41b7d898ebed1f600fa902988b48d;
     // keccak256("trippy-nfts.access.captcha-solved(address)")
     bytes32 internal constant DS_CAPTCHA_SOLVED =
         0xbdb1174521f3a1bc58650f9b7f1d334ba5a5d285784105f22a08b6f5a9600656;
@@ -81,14 +84,29 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
     function doWhitelistBuy(bytes memory _whitelistedSig) external payable {
         _checkTime(whitelistedSale.params);
         _verifyWhitelist(msg.sender, _whitelistedSig);
-        uint256 bought = _buyForSale(whitelistedSale, msg.sender, msg.value);
+        uint256 bought = _buyForSale(whitelistedSale);
+        emit Buy(msg.sender, false, bought);
+    }
+
+    function doVipBuy(uint256 _userMaxBuys, uint256 _price, bytes memory _vipBuySig)
+        external payable
+    {
+        _checkTime(whitelistedSale.params);
+        require(
+            _verifySig(
+                abi.encode(DS_IS_VIP_BUYER, msg.sender, _userMaxBuys, _price),
+                _vipBuySig
+            ),
+            "TrippyNFTs: unverified VIP"
+        );
+        uint256 bought = _buy(whitelistedSale, _price, _userMaxBuys);
         emit Buy(msg.sender, false, bought);
     }
 
     function doPublicBuy(bytes memory _captchaSig) external payable {
         _checkTime(publicSale.params);
         _verifyCaptcha(msg.sender, _captchaSig);
-        uint256 bought = _buyForSale(publicSale, msg.sender, msg.value);
+        uint256 bought = _buyForSale(publicSale);
         emit Buy(msg.sender, true, bought);
     }
 
@@ -117,24 +135,25 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         return (DS_IS_WHITELISTED, DS_CAPTCHA_SOLVED, DS_VALID_METADATA);
     }
 
-    function _buyForSale(Sale storage _sale, address _buyer, uint256 _value)
+    function _buyForSale(Sale storage _sale) internal returns (uint256 toBeBought) {
+        toBeBought = _buy(_sale, _sale.params.price, _sale.params.userMaxBuys);
+    }
+
+    function _buy(Sale storage _sale, uint256 _price, uint256 _userMaxBuys)
         internal returns (uint256 toBeBought)
     {
-        toBeBought = _value / uint256(_sale.params.price);
+        toBeBought = msg.value / _price;
         require(toBeBought >= 1, "TrippyNFTs: must buy atleast 1");
-        uint256 userTotalBuys = _sale.buys[_buyer] + toBeBought;
-        require(
-            userTotalBuys <= _sale.params.userMaxBuys,
-            "TrippyNFTs: user buys maxed out"
-        );
+        uint256 userTotalBuys = _sale.buys[msg.sender] + toBeBought;
+        require(userTotalBuys <= _userMaxBuys, "TrippyNFTs: user buys maxed out");
         uint256 totalSaleBuys = _sale.totalBuys + toBeBought;
         require(
             totalSaleBuys <= _sale.params.totalMaxBuys,
             "TrippyNFTs: sale sold out"
         );
-        _mintMany(_buyer, toBeBought);
+        _mintMany(msg.sender, toBeBought);
         totalBuys += toBeBought;
-        _sale.buys[_buyer] = userTotalBuys;
+        _sale.buys[msg.sender] = userTotalBuys;
         _sale.totalBuys = totalSaleBuys;
     }
 
