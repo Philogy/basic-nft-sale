@@ -1,5 +1,6 @@
 const { accounts, contract, web3 } = require('@openzeppelin/test-environment')
-const { trackBalance, ether, safeBN, stringifyBNObj } = require('./utils.js')(web3)
+const { trackBalance, ether, safeBN, stringifyBNObj, adjustSigV, ZERO } =
+  require('./utils.js')(web3)
 const { time, expectEvent, constants, expectRevert } = require('@openzeppelin/test-helpers')
 const [admin, verifier, user1, user2, attacker] = accounts
 const { expect } = require('chai')
@@ -17,16 +18,16 @@ describe('TrippyNFTs', () => {
       start: this.start,
       end: this.whitelistEnd,
       userMaxBuys: safeBN(2),
-      totalMaxBuys: safeBN(2000)
+      totalMaxBuys: safeBN(3)
     }
     this.publicSale = {
       price: ether(0.05),
       start: this.whitelistEnd,
       end: this.end,
       userMaxBuys: safeBN(5),
-      totalMaxBuys: safeBN(7000)
+      totalMaxBuys: safeBN(8)
     }
-    this.maxTotal = safeBN(10000)
+    this.maxTotal = safeBN(20)
 
     this.sale = await TrippyNFTs.new(
       'Trippy NFT collection',
@@ -83,15 +84,23 @@ describe('TrippyNFTs', () => {
       const { params: publicSaleParams } = await this.sale.publicSale()
       compareParams('publicSale', publicSaleParams, this.publicSale)
     })
+    it('starts users with no NFTs', async () => {
+      expect(await this.sale.balanceOf(user1)).to.be.bignumber.equal(ZERO)
+    })
   })
   describe('whitelist buy', () => {
     before(async () => {
-      this.whitelistBy = async (account, signer) => {
+      this.whitelistEncode = (account) => {
         const encoded = web3.eth.abi.encodeParameters(
           ['bytes32', 'address'],
           [this.sale.expectedConstants.DS_IS_WHITELISTED, account]
         )
-        return await web3.eth.sign(encoded, signer)
+        const hash = web3.utils.soliditySha3(encoded)
+        return hash
+      }
+      this.whitelistBy = async (account, signer) => {
+        const directSig = await web3.eth.sign(this.whitelistEncode(account), signer)
+        return adjustSigV(directSig)
       }
     })
     it('disallows buy before start', async () => {
@@ -111,18 +120,60 @@ describe('TrippyNFTs', () => {
       )
     })
     it('disallows different address sig reuse', async () => {
-      const sig = await this.whitelistBy(user1, verifier)
+      this.user1Sig = await this.whitelistBy(user1, verifier)
       await expectRevert(
-        this.sale.doWhitelistBuy(sig, { from: attacker }),
+        this.sale.doWhitelistBuy(this.user1Sig, { from: attacker }),
         'TrippyNFTs: not whitelisted'
       )
     })
     it('disallows 0 token buys', async () => {
-      const sig = await this.whitelistBy(user1, verifier)
       const slightlyTooLittle = this.whitelistedSale.price.sub(safeBN('1'))
       await expectRevert(
-        this.sale.doWhitelistBuy(sig, { from: user1, value: slightlyTooLittle }),
+        this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: slightlyTooLittle }),
         'TrippyNFTs: must buy atleast 1'
+      )
+    })
+    it('disallow initial excess buys', async () => {
+      const sale = this.whitelistedSale
+      const total = sale.price.mul(sale.userMaxBuys.add(safeBN(1)))
+      await expectRevert(
+        this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total }),
+        'TrippyNFTs: user buys maxed out'
+      )
+    })
+    it('allows valid buy', async () => {
+      const sale = this.whitelistedSale
+      const amount = safeBN(1)
+      const total = sale.price.mul(amount)
+      const receipt = await this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total })
+      expectEvent(receipt, 'Buy', { buyer: user1, isPublic: false, amount })
+      expect(await this.sale.balanceOf(user1)).to.be.bignumber.equal(amount)
+    })
+    it('disallows excess buys', async () => {
+      const sale = this.whitelistedSale
+      const amount = safeBN(2)
+      const total = sale.price.mul(amount)
+      await expectRevert(
+        this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total }),
+        'TrippyNFTs: user buys maxed out'
+      )
+      await this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: sale.price })
+    })
+    it('disallows exceeding sale max buys', async () => {
+      this.user2Sig = await this.whitelistBy(user2, verifier)
+      const sale = this.whitelistedSale
+      const amount = safeBN(2)
+      const total = sale.price.mul(amount)
+      await expectRevert(
+        this.sale.doWhitelistBuy(this.user2Sig, { from: user2, value: total }),
+        'TrippyNFTs: sale sold out'
+      )
+    })
+    it('disallows sale after end', async () => {
+      await time.increaseTo(this.whitelistEnd.add(time.duration.seconds(1)))
+      await expectRevert(
+        this.sale.doWhitelistBuy(this.user2Sig, { from: user2 }),
+        'TrippyNFTs: after sale'
       )
     })
   })

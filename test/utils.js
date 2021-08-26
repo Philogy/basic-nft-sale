@@ -102,6 +102,19 @@ module.exports = (web3) => {
     return newObj
   }
 
+  function genRandomAccount() {
+    return web3.eth.accounts.privateKeyToAccount(web3.utils.randomHex(32))
+  }
+
+  function adjustSigV(sig) {
+    const rs = sig.slice(0, -2)
+    let v = parseInt(sig.slice(-2), 16)
+    if (v !== 27 && v !== 28) {
+      v += 27
+    }
+    return rs + v.toString(16)
+  }
+
   const utils = {
     ZERO,
     bnSum,
@@ -117,7 +130,9 @@ module.exports = (web3) => {
     bnE,
     safeBN,
     solidityKeccak256,
-    stringifyBNObj
+    stringifyBNObj,
+    genRandomAccount,
+    adjustSigV
   }
 
   return utils

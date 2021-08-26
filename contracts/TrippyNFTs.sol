@@ -135,6 +135,12 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         return (DS_IS_WHITELISTED, DS_CAPTCHA_SOLVED, DS_VALID_METADATA);
     }
 
+    function _checkTime(SaleParams storage _params) internal view {
+        uint256 timestamp = block.timestamp;
+        require(timestamp >= _params.start, "TrippyNFTs: before sale");
+        require(timestamp <= _params.end, "TrippyNFTs: after sale");
+    }
+
     function _buyForSale(Sale storage _sale) internal returns (uint256 toBeBought) {
         toBeBought = _buy(_sale, _sale.params.price, _sale.params.userMaxBuys);
     }
@@ -165,12 +171,6 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
             _safeMint(_recipient, totalIssued_ + i);
         }
         totalIssued = issued;
-    }
-
-    function _checkTime(SaleParams storage _params) internal view {
-        uint256 timestamp = block.timestamp;
-        require(timestamp >= _params.start, "TrippyNFTs: before sale");
-        require(timestamp <= _params.end, "TrippyNFTs: after sale");
     }
 
     function _verifyWhitelist(address _account, bytes memory _whitelistedSig)
