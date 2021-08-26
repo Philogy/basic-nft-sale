@@ -3,10 +3,15 @@ pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract TrippyNFTs is ERC721URIStorage, Ownable {
+    using ECDSA for bytes32;
     using SignatureChecker for address;
+
+    event Buy(address indexed buyer, bool indexed isPublic, uint256 amount);
+    event VerifierChanged(address indexed prevVerifier, address indexed newVerifier);
 
     struct SaleParams {
         uint64 price;
@@ -29,7 +34,7 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
     // keccak256("trippy-nfts.access.captcha-solved(address)")
     bytes32 internal constant DS_CAPTCHA_SOLVED =
         0xbdb1174521f3a1bc58650f9b7f1d334ba5a5d285784105f22a08b6f5a9600656;
-    // keccak256("trippy-nfts.verif.valid-metadata(uint256,string")
+    // keccak256("trippy-nfts.verif.valid-metadata(uint256,string)")
     bytes32 internal constant DS_VALID_METADATA =
         0x7f0194f46a516c4bd3380098cb2274989108caa7eb882bf30e7d9807f42d7003;
 
@@ -38,13 +43,13 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
     uint256 public totalBuys;
     uint256 public totalIssued;
     uint256 public immutable maxTotal;
-
-    address internal verifier;
+    address public verifier;
 
     constructor(
         string memory name_,
         string memory symbol_,
         SaleParams memory _whitelistedSaleParams,
+        SaleParams memory _publicSaleParams,
         uint256 _maxTotal,
         address _verifier
     )
@@ -52,11 +57,14 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         Ownable()
     {
         whitelistedSale.params = _whitelistedSaleParams;
+        publicSale.params = _publicSaleParams;
         maxTotal = _maxTotal;
         verifier = _verifier;
+        emit VerifierChanged(address(0), _verifier);
     }
 
     function setVerifier(address _newVerifier) external onlyOwner {
+        emit VerifierChanged(verifier, _newVerifier);
         verifier = _newVerifier;
     }
 
@@ -73,22 +81,61 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
     function doWhitelistBuy(bytes memory _whitelistedSig) external payable {
         _checkTime(whitelistedSale.params);
         _verifyWhitelist(msg.sender, _whitelistedSig);
-        uint256 toBeBought = msg.value / uint256(whitelistedSale.params.price);
+        uint256 bought = _buyForSale(whitelistedSale, msg.sender, msg.value);
+        emit Buy(msg.sender, false, bought);
+    }
+
+    function doPublicBuy(bytes memory _captchaSig) external payable {
+        _checkTime(publicSale.params);
+        _verifyCaptcha(msg.sender, _captchaSig);
+        uint256 bought = _buyForSale(publicSale, msg.sender, msg.value);
+        emit Buy(msg.sender, true, bought);
+    }
+
+    function revealMetadata(
+        uint256[] memory _tokenIds,
+        string[] memory _tokenURIs,
+        bytes memory _validMetadataSig
+    )
+        external
+    {
+        uint256 tokens = _tokenIds.length;
+        require(tokens == _tokenURIs.length, "TrippyNFTs: length mismatch");
+        require(
+            _verifySig(
+                abi.encode(DS_VALID_METADATA, _tokenIds, _tokenURIs),
+                _validMetadataSig
+            ),
+            "TrippyNFTs: unverified metadata"
+        );
+        for (uint256 i; i < tokens; i++) {
+            _setTokenURI(_tokenIds[i], _tokenURIs[i]);
+        }
+    }
+
+    function getConstants() public pure returns (bytes32, bytes32, bytes32) {
+        return (DS_IS_WHITELISTED, DS_CAPTCHA_SOLVED, DS_VALID_METADATA);
+    }
+
+    function _buyForSale(Sale storage _sale, address _buyer, uint256 _value)
+        internal returns (uint256 toBeBought)
+    {
+        toBeBought = _value / uint256(_sale.params.price);
         require(toBeBought >= 1, "TrippyNFTs: must buy atleast 1");
-        uint256 userTotalBuys = whitelistedSale.buys[msg.sender] + toBeBought;
+        uint256 userTotalBuys = _sale.buys[_buyer] + toBeBought;
         require(
-            userTotalBuys <= whitelistedSale.params.userMaxBuys,
-            "TrippyNFTs: buys maxed out"
+            userTotalBuys <= _sale.params.userMaxBuys,
+            "TrippyNFTs: user buys maxed out"
         );
-        uint256 totalWhitelistedBuys = whitelistedSale.totalBuys + toBeBought;
+        uint256 totalSaleBuys = _sale.totalBuys + toBeBought;
         require(
-            totalWhitelistedBuys <= whitelistedSale.params.totalMaxBuys,
-            "TrippyNFTs: whitelisted sold out"
+            totalSaleBuys <= _sale.params.totalMaxBuys,
+            "TrippyNFTs: sale sold out"
         );
-        _mintMany(msg.sender, toBeBought);
+        _mintMany(_buyer, toBeBought);
         totalBuys += toBeBought;
-        whitelistedSale.buys[msg.sender] = userTotalBuys;
-        whitelistedSale.totalBuys = totalWhitelistedBuys;
+        _sale.buys[_buyer] = userTotalBuys;
+        _sale.totalBuys = totalSaleBuys;
     }
 
     function _mintMany(address _recipient, uint256 _amount) internal {
@@ -111,11 +158,26 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         internal view
     {
         require(
-            verifier.isValidSignatureNow(
-                keccak256(abi.encode(DS_IS_WHITELISTED, _account)),
-                _whitelistedSig
-            ),
+            _verifySig(abi.encode(DS_IS_WHITELISTED, _account), _whitelistedSig),
             "TrippyNFTs: not whitelisted"
+        );
+    }
+
+    function _verifyCaptcha(address _account, bytes memory _captchaSig)
+        internal view
+    {
+        require(
+            _verifySig(abi.encode(DS_CAPTCHA_SOLVED, _account), _captchaSig),
+            "TrippyNFTs: no captcha"
+        );
+    }
+
+    function _verifySig(bytes memory _data, bytes memory _sig)
+        internal view returns (bool)
+    {
+        return verifier.isValidSignatureNow(
+            keccak256(_data).toEthSignedMessageHash(),
+            _sig
         );
     }
 }
