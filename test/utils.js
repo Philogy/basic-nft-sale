@@ -5,6 +5,7 @@ module.exports = (web3) => {
   const keccak = require('keccak')
 
   const ZERO = new BN('0')
+  const ONE = new BN('1')
   const bnSum = (...nums) => nums.reduce((x, y) => x.add(y), ZERO)
   const encodeFunctionCall = (contract, method, args) => {
     return contract.contract.methods[method](...args).encodeABI()
@@ -32,7 +33,7 @@ module.exports = (web3) => {
     }
 
     async _get() {
-      if (this.token === null) return await web3.eth.getBalance(this.address)
+      if (this.token === null) return safeBN(await web3.eth.getBalance(this.address))
       return await this.token.balanceOf(this.address)
     }
 
@@ -117,6 +118,7 @@ module.exports = (web3) => {
 
   const utils = {
     ZERO,
+    ONE,
     bnSum,
     encodeFunctionCall,
     ether,
