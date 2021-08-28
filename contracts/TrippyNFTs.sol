@@ -4,14 +4,16 @@ pragma solidity ^0.8.7;
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract TrippyNFTs is ERC721URIStorage, Ownable {
+contract TrippyNFTs is ERC721URIStorage, Ownable, ReentrancyGuard {
     using ECDSA for bytes32;
     using SignatureChecker for address;
 
     event Buy(address indexed buyer, bool indexed isPublic, uint256 amount);
-    event VerifierChanged(address indexed prevVerifier, address indexed newVerifier);
+    event VerifierSet(address indexed prevVerifier, address indexed newVerifier);
+    event Withdraw(address indexed recipient, uint256 amount);
 
     struct SaleParams {
         uint64 price;
@@ -47,6 +49,8 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
     uint256 public totalIssued;
     uint256 public immutable maxTotal;
     address public verifier;
+    string public defaultURI;
+    mapping(uint256 => address) public tokenURISetter;
 
     constructor(
         string memory name_,
@@ -54,31 +58,42 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         SaleParams memory _whitelistedSaleParams,
         SaleParams memory _publicSaleParams,
         uint256 _maxTotal,
-        address _verifier
+        address _verifier,
+        string memory _defaultURI
     )
         ERC721(name_, symbol_)
         Ownable()
+        ReentrancyGuard()
     {
         whitelistedSale.params = _whitelistedSaleParams;
         publicSale.params = _publicSaleParams;
         maxTotal = _maxTotal;
         verifier = _verifier;
-        emit VerifierChanged(address(0), _verifier);
+        emit VerifierSet(address(0), _verifier);
+        defaultURI = _defaultURI;
     }
 
     function setVerifier(address _newVerifier) external onlyOwner {
-        emit VerifierChanged(verifier, _newVerifier);
+        emit VerifierSet(verifier, _newVerifier);
         verifier = _newVerifier;
     }
 
     function withdrawProceedsTo(address payable _recipient, uint256 _amount)
         external onlyOwner
     {
+        if (_amount == type(uint256).max) {
+            _amount = address(this).balance;
+        }
         _recipient.transfer(_amount);
+        emit Withdraw(_recipient, _amount);
     }
 
-    function allocate(address _recipient, uint256 _amount) external onlyOwner {
+    function allocateTo(address _recipient, uint256 _amount) external onlyOwner {
         _mintMany(_recipient, _amount);
+    }
+
+    function setDefaultURI(string memory _defaulURI) external onlyOwner {
+        defaultURI = _defaulURI;
     }
 
     function doWhitelistBuy(bytes memory _whitelistedSig) external payable {
@@ -131,7 +146,22 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         }
     }
 
-    function getConstants() public pure returns (bytes32, bytes32, bytes32) {
+    function tokenURI(uint256 _tokenId)
+        public view override returns (string memory)
+    {
+        string memory tokenURI_ = super.tokenURI(_tokenId);
+        return bytes(tokenURI_).length != 0 ? tokenURI_ : defaultURI;
+    }
+
+    function getWhitelistBuys(address _buyer) external view returns (uint256) {
+        return whitelistedSale.buys[_buyer];
+    }
+
+    function getPublicBuys(address _buyer) external view returns (uint256) {
+        return publicSale.buys[_buyer];
+    }
+
+    function getConstants() external pure returns (bytes32, bytes32, bytes32) {
         return (DS_IS_WHITELISTED, DS_CAPTCHA_SOLVED, DS_VALID_METADATA);
     }
 
@@ -163,7 +193,7 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
         _sale.totalBuys = totalSaleBuys;
     }
 
-    function _mintMany(address _recipient, uint256 _amount) internal {
+    function _mintMany(address _recipient, uint256 _amount) internal nonReentrant {
         uint256 totalIssued_ = totalIssued;
         uint256 issued = totalIssued_ + _amount;
         require(issued <= maxTotal, "TrippyNFTs: max issued");
@@ -198,5 +228,13 @@ contract TrippyNFTs is ERC721URIStorage, Ownable {
             keccak256(_data).toEthSignedMessageHash(),
             _sig
         );
+    }
+
+    function _setTokenURI(uint256 _tokenId, string memory _tokenURI)
+        internal override
+    {
+        require(tokenURISetter[_tokenId] != verifier, "TrippyNFTs: URI already set");
+        super._setTokenURI(_tokenId, _tokenURI);
+        tokenURISetter[_tokenId] = verifier;
     }
 }
