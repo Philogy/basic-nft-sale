@@ -15,14 +15,12 @@ describe('TrippyNFTs', () => {
     this.end = this.publicStart.add(time.duration.hours(24))
 
     this.whitelistedSale = {
-      price: ether(0.1),
       start: this.start,
       end: this.whitelistEnd,
       userMaxBuys: safeBN(2),
       totalMaxBuys: safeBN(3)
     }
     this.publicSale = {
-      price: ether(0.05),
       start: this.publicStart,
       end: this.end,
       userMaxBuys: safeBN(5),
@@ -31,12 +29,15 @@ describe('TrippyNFTs', () => {
     this.maxTotal = safeBN(20)
     this.defaultURI = 'placeholder-default-uri'
 
+    this.price = ether(0.1)
+
     this.sale = await TrippyNFTs.new(
       'Trippy NFT collection',
       'TRP',
       stringifyBNObj(this.whitelistedSale),
       stringifyBNObj(this.publicSale),
       this.maxTotal,
+      this.price,
       verifier1,
       this.defaultURI,
       { from: admin1 }
@@ -48,8 +49,7 @@ describe('TrippyNFTs', () => {
       const keccak256 = (value) => web3.utils.soliditySha3({ type: 'string', value })
       this.sale.expectedConstants = {
         DS_IS_WHITELISTED: keccak256('trippy-nfts.access.is-whitelisted(address)'),
-        DS_CAPTCHA_SOLVED: keccak256('trippy-nfts.access.captcha-solved(address)'),
-        DS_VALID_METADATA: keccak256('trippy-nfts.verif.valid-metadata(uint256,string)')
+        DS_CAPTCHA_SOLVED: keccak256('trippy-nfts.access.captcha-solved(address)')
       }
       expect(constants[0]).to.equal(
         this.sale.expectedConstants.DS_IS_WHITELISTED,
@@ -58,10 +58,6 @@ describe('TrippyNFTs', () => {
       expect(constants[1]).to.equal(
         this.sale.expectedConstants.DS_CAPTCHA_SOLVED,
         'DS_CAPTCHA_SOLVED wrong'
-      )
-      expect(constants[2]).to.equal(
-        this.sale.expectedConstants.DS_VALID_METADATA,
-        'DS_VALID_METADATA wrong'
       )
     })
     it('has correct initial owner', async () => {
@@ -136,7 +132,7 @@ describe('TrippyNFTs', () => {
       )
     })
     it('disallows 0 token buys', async () => {
-      const slightlyTooLittle = this.whitelistedSale.price.sub(safeBN('1'))
+      const slightlyTooLittle = this.price.sub(safeBN('1'))
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: slightlyTooLittle }),
         'TrippyNFTs: must buy atleast 1'
@@ -144,16 +140,15 @@ describe('TrippyNFTs', () => {
     })
     it('disallow initial excess buys', async () => {
       const sale = this.whitelistedSale
-      const total = sale.price.mul(sale.userMaxBuys.add(ONE))
+      const total = this.price.mul(sale.userMaxBuys.add(ONE))
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total }),
         'TrippyNFTs: user buys maxed out'
       )
     })
     it('allows valid buy', async () => {
-      const sale = this.whitelistedSale
       const amount = ONE
-      const total = sale.price.mul(amount)
+      const total = this.price.mul(amount)
       const receipt = await this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total })
       expectEvent(receipt, 'Buy', { buyer: user1, isPublic: false, amount })
       expect(await this.sale.balanceOf(user1)).to.be.bignumber.equal(amount)
@@ -162,20 +157,18 @@ describe('TrippyNFTs', () => {
       expect(data.totalBuys).to.be.bignumber.equal(ONE)
     })
     it('disallows excess buys', async () => {
-      const sale = this.whitelistedSale
       const amount = safeBN(2)
-      const total = sale.price.mul(amount)
+      const total = this.price.mul(amount)
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total }),
         'TrippyNFTs: user buys maxed out'
       )
-      await this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: sale.price })
+      await this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: this.price })
     })
     it('disallows exceeding sale max buys', async () => {
       this.user2Sig = await this.whitelistBy(user2, verifier1)
-      const sale = this.whitelistedSale
       const amount = safeBN(2)
-      const total = sale.price.mul(amount)
+      const total = this.price.mul(amount)
       await expectRevert(
         this.sale.doWhitelistBuy(this.user2Sig, { from: user2, value: total }),
         'TrippyNFTs: sale sold out'
@@ -229,14 +222,14 @@ describe('TrippyNFTs', () => {
       await expectRevert(
         this.sale.doPublicBuy(this.user2Sig, {
           from: user2,
-          value: this.publicSale.price.sub(ONE)
+          value: this.price.sub(ONE)
         }),
         'TrippyNFTs: must buy atleast 1'
       )
     })
     it('disallows excess buys', async () => {
       this.doPublicBuy = (buyer, sig, amount) =>
-        this.sale.doPublicBuy(sig, { from: buyer, value: this.publicSale.price.mul(amount) })
+        this.sale.doPublicBuy(sig, { from: buyer, value: this.price.mul(amount) })
       const overMaxUserBuys = this.publicSale.userMaxBuys.add(ONE)
       await expectRevert(
         this.doPublicBuy(user2, this.user2Sig, overMaxUserBuys),
@@ -354,6 +347,18 @@ describe('TrippyNFTs', () => {
       expect(await this.sale.defaultURI()).to.equal(newDefaultURI)
       this.defaultURI = newDefaultURI
     })
+    it('only allows owner to set base URI', async () => {
+      const newBaseURI = 'ipfs://some-ipfs-CID/'
+      await expectRevert(
+        this.sale.setBaseURI('bad-uri', { from: attacker }),
+        'Ownable: caller is not the owner'
+      )
+      expect(await this.sale.baseURI()).to.equal('')
+      await this.sale.setBaseURI(newBaseURI, { from: admin1 })
+      expect(await this.sale.baseURI()).to.equal(newBaseURI)
+
+      await this.sale.setBaseURI('', { from: admin1 })
+    })
     it('only allows owner to freely mint tokens', async () => {
       await expectRevert(
         this.sale.allocateTo(attacker, safeBN(5), { from: attacker }),
@@ -380,91 +385,68 @@ describe('TrippyNFTs', () => {
       )
     })
   })
-  describe('metadata', async () => {
-    before(async () => {
-      await this.sale.setVerifier(verifier1, { from: admin1 })
-      this.validateMetadata = async (tokenIds, tokenURIs, signer) => {
-        const encoded = web3.eth.abi.encodeParameters(
-          ['bytes32', 'uint256[]', 'string[]'],
-          [this.sale.expectedConstants.DS_VALID_METADATA, tokenIds, tokenURIs]
-        )
-        const hash = web3.utils.soliditySha3(encoded)
-        const directSignature = await web3.eth.sign(hash, signer)
-        return adjustSigV(directSignature)
+  describe('token URIs', () => {
+    it('only returns defaultURI for existing tokens', async () => {
+      expect(await this.sale.baseURI()).to.equal('')
+      await expectRevert(this.sale.tokenURI(safeBN(999)), 'TrippyNFTs: nonexistent token')
+      expect(await this.sale.tokenURI(safeBN(0))).to.equal(this.defaultURI)
+    })
+    it('returns concatenated URI once base URI is set', async () => {
+      const newBaseURI = 'ipfs://some-ipfs-folder-root-cid/'
+      await this.sale.setBaseURI(newBaseURI, { from: admin1 })
+      const tokenId = 0
+      expect(await this.sale.tokenURI(safeBN(tokenId))).to.equal(`${newBaseURI}${tokenId}`)
+    })
+    it('still reverts for nonexistent tokens', async () => {
+      expect(await this.sale.baseURI()).to.not.equal('')
+      await expectRevert(this.sale.tokenURI(safeBN(999)), 'TrippyNFTs: nonexistent token')
+    })
+  })
+  describe('gas usage', () => {
+    const formatter = Intl.NumberFormat('en-us', { maximumFractionDigits: 3 })
+    const formatGas = (receipt) => {
+      const gasUsed = receipt?.gasUsed ?? receipt.receipt.gasUsed
+      return formatter.format(gasUsed)
+    }
+    it('deployment', async () => {
+      this.start = (await time.latest()).add(time.duration.hours(24))
+      this.whitelistEnd = this.start.add(time.duration.hours(48))
+      this.publicStart = this.whitelistEnd.add(time.duration.hours(24))
+      this.end = this.publicStart.add(time.duration.hours(24))
+
+      this.whitelistedSale = {
+        start: this.start,
+        end: this.whitelistEnd,
+        userMaxBuys: safeBN(2),
+        totalMaxBuys: safeBN(3)
       }
-    })
-    it('reverts for tokenURI requests of non-existant tokens', async () => {
-      const nonExistentTokenId = await this.sale.totalIssued()
-      await expectRevert(
-        this.sale.tokenURI(nonExistentTokenId),
-        'ERC721URIStorage: URI query for nonexistent token'
-      )
-    })
-    it('returns default URI for unset tokens', async () => {
-      for (const tokenId of [safeBN(1), safeBN(3)]) {
-        expect(await this.sale.tokenURI(tokenId)).to.equal(this.defaultURI)
+      this.publicSale = {
+        start: this.publicStart,
+        end: this.end,
+        userMaxBuys: safeBN(5),
+        totalMaxBuys: safeBN(8)
       }
-    })
-    it('disallows setting metadata without signature', async () => {
-      const tokenIds = [safeBN(0)]
-      const tokenURIs = ['bad URI']
-      await expectRevert(
-        this.sale.revealMetadata(tokenIds, tokenURIs, '0x'),
-        'TrippyNFTs: unverified metadata'
+      this.maxTotal = safeBN(20)
+      this.defaultURI = 'placeholder-default-uri'
+
+      this.sale = await TrippyNFTs.new(
+        'Trippy NFT collection',
+        'TRP',
+        stringifyBNObj(this.whitelistedSale),
+        stringifyBNObj(this.publicSale),
+        this.maxTotal,
+        ether(0.1),
+        verifier1,
+        this.defaultURI,
+        { from: admin1 }
       )
-      await expectRevert(
-        this.sale.revealMetadata(
-          tokenIds,
-          tokenURIs,
-          await this.validateMetadata(tokenIds, tokenURIs, attacker)
-        ),
-        'TrippyNFTs: unverified metadata'
-      )
+      const tx = this.sale.transactionHash
+      const receipt = await web3.eth.getTransactionReceipt(tx)
+      console.log(`deployment cost: ${formatGas(receipt)}`)
     })
-    it('requires input arrays to match', async () => {
-      await expectRevert(
-        this.sale.revealMetadata([safeBN(0), safeBN(1)], ['the url'], '0x'),
-        'TrippyNFTs: length mismatch'
-      )
-    })
-    it('allows revealing metadata with valid signature', async () => {
-      const tokenIds = [safeBN(0), safeBN(2)]
-      const tokenURIs = ['token0', 'token2']
-      const sig = await this.validateMetadata(tokenIds, tokenURIs, verifier1)
-      await this.sale.revealMetadata(tokenIds, tokenURIs, sig)
-      expect(await this.sale.tokenURI(tokenIds[0])).to.equal(tokenURIs[0])
-      expect(await this.sale.tokenURISetter(tokenIds[0])).to.equal(verifier1)
-      expect(await this.sale.tokenURI(tokenIds[1])).to.equal(tokenURIs[1])
-      expect(await this.sale.tokenURISetter(tokenIds[1])).to.equal(verifier1)
-    })
-    it('disallow verifier to overwrite URIs', async () => {
-      const tokenIds = [safeBN(1), safeBN(2)]
-      const tokenURIs = ['token1', 'weird uri']
-      const sig = await this.validateMetadata(tokenIds, tokenURIs, verifier1)
-      await expectRevert(
-        this.sale.revealMetadata(tokenIds, tokenURIs, sig),
-        'TrippyNFTs: URI already set'
-      )
-    })
-    it('allows new verifier to overwrite URIs', async () => {
-      await this.sale.setVerifier(verifier2, { from: admin1 })
-      const tokenIds = [safeBN(1), safeBN(2)]
-      const tokenURIs = ['token1', 'fixed uri']
-      const sig = await this.validateMetadata(tokenIds, tokenURIs, verifier2)
-      await this.sale.revealMetadata(tokenIds, tokenURIs, sig)
-      expect(await this.sale.tokenURI(tokenIds[1])).to.equal(tokenURIs[1])
-      expect(await this.sale.tokenURISetter(safeBN(0))).to.equal(verifier1)
-      expect(await this.sale.tokenURISetter(safeBN(1))).to.equal(verifier2)
-      expect(await this.sale.tokenURISetter(safeBN(2))).to.equal(verifier2)
-    })
-    it('disallows old signatures once verifier is changed', async () => {
-      const tokenIds = [safeBN(3), safeBN(4)]
-      const tokenURIs = ['bad uri 3', 'bad uri 4']
-      const oldSig = await this.validateMetadata(tokenIds, tokenURIs, verifier1)
-      await expectRevert(
-        this.sale.revealMetadata(tokenIds, tokenURIs, oldSig),
-        'TrippyNFTs: unverified metadata'
-      )
+    it('changing verifier', async () => {
+      const receipt = await this.sale.setVerifier(verifier2, { from: admin1 })
+      console.log(`changing verifier cost: ${formatGas(receipt)}`)
     })
   })
 })
