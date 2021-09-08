@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -47,7 +47,6 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
     address public verifier;
     string public defaultURI;
     string public baseURI;
-    mapping(uint256 => address) public tokenURISetter;
 
     constructor(
         string memory name_,
