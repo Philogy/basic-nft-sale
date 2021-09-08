@@ -107,6 +107,12 @@ This is the list of access restricted methods that can only be used by the
 contract owner. All the methods listed here revert if the caller is not the
 `owner` account.
 
+* **`transferOwnership(address)`**
+  * Parameter(s):
+    * `address _newOwner`: address of account to become new owner
+  * Emitted Event(s):
+    * `OwnershipTransferred(previousOwner, newOwner)`
+
 * **`setBaseURI(string)`**
   * Parameter(s):
     * `string memory _newBaseURI`: new metadata URI prefix to be stored in the
