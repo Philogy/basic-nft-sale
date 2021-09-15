@@ -86,9 +86,6 @@ describe('TrippyNFTs', () => {
     it('starts users with no NFTs', async () => {
       expect(await this.sale.balanceOf(user1)).to.be.bignumber.equal(ZERO)
     })
-    it('starts with no tokenURI setter', async () => {
-      expect(await this.sale.tokenURISetter(ZERO)).to.equal(constants.ZERO_ADDRESS)
-    })
     it('starts with correct default URI', async () => {
       expect(await this.sale.defaultURI()).to.equal(this.defaultURI)
     })
