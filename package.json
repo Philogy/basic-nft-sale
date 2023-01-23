@@ -1,5 +1,5 @@
 {
-  "name": "trippy-nfts",
+  "name": "basic-nft-sale",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -10,7 +10,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@openzeppelin/test-environment": "^0.1.9",
     "@openzeppelin/test-helpers": "github:Philogy/openzeppelin-test-helpers",

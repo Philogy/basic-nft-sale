@@ -5,9 +5,9 @@ const { time, expectEvent, constants, expectRevert } = require('@openzeppelin/te
 const [admin1, admin2, verifier1, verifier2, user1, user2, attacker] = accounts
 const { expect } = require('chai')
 
-const TrippyNFTs = contract.fromArtifact('TrippyNFTs')
+const BasicNFTs = contract.fromArtifact('BasicNFTs')
 
-describe('TrippyNFTs', () => {
+describe('BasicNFTs', () => {
   before(async () => {
     this.start = (await time.latest()).add(time.duration.hours(24))
     this.whitelistEnd = this.start.add(time.duration.hours(48))
@@ -31,8 +31,8 @@ describe('TrippyNFTs', () => {
 
     this.price = ether(0.1)
 
-    this.sale = await TrippyNFTs.new(
-      'Trippy NFT collection',
+    this.sale = await BasicNFTs.new(
+      'Basic NFT collection',
       'TRP',
       stringifyBNObj(this.whitelistedSale),
       stringifyBNObj(this.publicSale),
@@ -48,8 +48,8 @@ describe('TrippyNFTs', () => {
       const constants = await this.sale.getConstants()
       const keccak256 = (value) => web3.utils.soliditySha3({ type: 'string', value })
       this.sale.expectedConstants = {
-        DS_IS_WHITELISTED: keccak256('trippy-nfts.access.is-whitelisted(address)'),
-        DS_CAPTCHA_SOLVED: keccak256('trippy-nfts.access.captcha-solved(address)')
+        DS_IS_WHITELISTED: keccak256('basic-nfts.access.is-whitelisted(address)'),
+        DS_CAPTCHA_SOLVED: keccak256('basic-nfts.access.captcha-solved(address)')
       }
       expect(constants[0]).to.equal(
         this.sale.expectedConstants.DS_IS_WHITELISTED,
@@ -107,32 +107,32 @@ describe('TrippyNFTs', () => {
     })
     it('disallows buy before start', async () => {
       expect(await time.latest()).to.be.bignumber.below(this.start)
-      await expectRevert(this.sale.doWhitelistBuy('0x', { from: user1 }), 'TrippyNFTs: before sale')
+      await expectRevert(this.sale.doWhitelistBuy('0x', { from: user1 }), 'BasicNFTs: before sale')
     })
     it('disallows buy without valid signature', async () => {
       await time.increaseTo(this.start)
       await expectRevert(
         this.sale.doWhitelistBuy('0x', { from: attacker }),
-        'TrippyNFTs: not whitelisted'
+        'BasicNFTs: not whitelisted'
       )
       const fakeSig = await this.whitelistBy(attacker, attacker)
       await expectRevert(
         this.sale.doWhitelistBuy(fakeSig, { from: attacker }),
-        'TrippyNFTs: not whitelisted'
+        'BasicNFTs: not whitelisted'
       )
     })
     it('disallows different address sig reuse', async () => {
       this.user1Sig = await this.whitelistBy(user1, verifier1)
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: attacker }),
-        'TrippyNFTs: not whitelisted'
+        'BasicNFTs: not whitelisted'
       )
     })
     it('disallows 0 token buys', async () => {
       const slightlyTooLittle = this.price.sub(safeBN('1'))
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: slightlyTooLittle }),
-        'TrippyNFTs: must buy atleast 1'
+        'BasicNFTs: must buy atleast 1'
       )
     })
     it('disallow initial excess buys', async () => {
@@ -140,7 +140,7 @@ describe('TrippyNFTs', () => {
       const total = this.price.mul(sale.userMaxBuys.add(ONE))
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total }),
-        'TrippyNFTs: user buys maxed out'
+        'BasicNFTs: user buys maxed out'
       )
     })
     it('allows valid buy', async () => {
@@ -158,7 +158,7 @@ describe('TrippyNFTs', () => {
       const total = this.price.mul(amount)
       await expectRevert(
         this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: total }),
-        'TrippyNFTs: user buys maxed out'
+        'BasicNFTs: user buys maxed out'
       )
       await this.sale.doWhitelistBuy(this.user1Sig, { from: user1, value: this.price })
     })
@@ -168,14 +168,14 @@ describe('TrippyNFTs', () => {
       const total = this.price.mul(amount)
       await expectRevert(
         this.sale.doWhitelistBuy(this.user2Sig, { from: user2, value: total }),
-        'TrippyNFTs: sale sold out'
+        'BasicNFTs: sale sold out'
       )
     })
     it('disallows sale after end', async () => {
       await time.increaseTo(this.whitelistEnd.add(time.duration.seconds(1)))
       await expectRevert(
         this.sale.doWhitelistBuy(this.user2Sig, { from: user2 }),
-        'TrippyNFTs: after sale'
+        'BasicNFTs: after sale'
       )
     })
   })
@@ -195,33 +195,30 @@ describe('TrippyNFTs', () => {
       }
     })
     it('disallow buy before start', async () => {
-      await expectRevert(this.sale.doPublicBuy('0x', { from: user1 }), 'TrippyNFTs: before sale')
+      await expectRevert(this.sale.doPublicBuy('0x', { from: user1 }), 'BasicNFTs: before sale')
     })
     it('disallows buy without valid signature', async () => {
       await time.increaseTo(this.publicStart)
-      await expectRevert(this.sale.doPublicBuy('0x', { from: user1 }), 'TrippyNFTs: no captcha')
+      await expectRevert(this.sale.doPublicBuy('0x', { from: user1 }), 'BasicNFTs: no captcha')
       const sig = await this.validateCaptcha(attacker, attacker)
-      await expectRevert(this.sale.doPublicBuy(sig, { from: attacker }), 'TrippyNFTs: no captcha')
+      await expectRevert(this.sale.doPublicBuy(sig, { from: attacker }), 'BasicNFTs: no captcha')
     })
     it('disallows whitelist sig', async () => {
       const altSig = await this.whitelistBy(attacker, verifier1)
-      await expectRevert(
-        this.sale.doPublicBuy(altSig, { from: attacker }),
-        'TrippyNFTs: no captcha'
-      )
+      await expectRevert(this.sale.doPublicBuy(altSig, { from: attacker }), 'BasicNFTs: no captcha')
     })
     it('disallows 0 public buys', async () => {
       this.user2Sig = await this.validateCaptcha(user2, verifier1)
       await expectRevert(
         this.sale.doPublicBuy(this.user2Sig, { from: user2 }),
-        'TrippyNFTs: must buy atleast 1'
+        'BasicNFTs: must buy atleast 1'
       )
       await expectRevert(
         this.sale.doPublicBuy(this.user2Sig, {
           from: user2,
           value: this.price.sub(ONE)
         }),
-        'TrippyNFTs: must buy atleast 1'
+        'BasicNFTs: must buy atleast 1'
       )
     })
     it('disallows excess buys', async () => {
@@ -230,13 +227,13 @@ describe('TrippyNFTs', () => {
       const overMaxUserBuys = this.publicSale.userMaxBuys.add(ONE)
       await expectRevert(
         this.doPublicBuy(user2, this.user2Sig, overMaxUserBuys),
-        'TrippyNFTs: user buys maxed out'
+        'BasicNFTs: user buys maxed out'
       )
       this.initialPublicBuys = safeBN(2)
       await this.doPublicBuy(user2, this.user2Sig, this.initialPublicBuys)
       await expectRevert(
         this.doPublicBuy(user2, this.user2Sig, overMaxUserBuys.sub(this.initialPublicBuys)),
-        'TrippyNFTs: user buys maxed out'
+        'BasicNFTs: user buys maxed out'
       )
     })
     it('allows normal buys', async () => {
@@ -259,7 +256,7 @@ describe('TrippyNFTs', () => {
       const toMaxBuys2 = maxBuys.sub(this.initialPublicBuys)
       await expectRevert(
         this.doPublicBuy(user2, this.user2Sig, toMaxBuys2),
-        'TrippyNFTs: sale sold out'
+        'BasicNFTs: sale sold out'
       )
     })
     it('disallows buys once sold out', async () => {
@@ -267,11 +264,11 @@ describe('TrippyNFTs', () => {
       const maxRemainingBuys = this.publicSale.totalMaxBuys.sub(data.totalBuys)
       await this.doPublicBuy(user2, this.user2Sig, maxRemainingBuys)
       const sig = await this.validateCaptcha(attacker, verifier1)
-      await expectRevert(this.doPublicBuy(attacker, sig, ONE), 'TrippyNFTs: sale sold out')
+      await expectRevert(this.doPublicBuy(attacker, sig, ONE), 'BasicNFTs: sale sold out')
     })
     it('disallow buys after end', async () => {
       await time.increaseTo(this.publicSale.end.add(time.duration.seconds(1)))
-      await expectRevert(this.doPublicBuy(user1, this.user1Sig, ONE), 'TrippyNFTs: after sale')
+      await expectRevert(this.doPublicBuy(user1, this.user1Sig, ONE), 'BasicNFTs: after sale')
     })
     it('has correct total buys and total issued after sales', async () => {
       const totalBuys = await this.sale.totalBuys()
@@ -378,14 +375,14 @@ describe('TrippyNFTs', () => {
       const maxRemainingAllocation = (await this.sale.maxTotal()).sub(await this.sale.totalIssued())
       await expectRevert(
         this.sale.allocateTo(attacker, maxRemainingAllocation.add(ONE), { from: admin1 }),
-        'TrippyNFTs: max issued'
+        'BasicNFTs: max issued'
       )
     })
   })
   describe('token URIs', () => {
     it('only returns defaultURI for existing tokens', async () => {
       expect(await this.sale.baseURI()).to.equal('')
-      await expectRevert(this.sale.tokenURI(safeBN(999)), 'TrippyNFTs: nonexistent token')
+      await expectRevert(this.sale.tokenURI(safeBN(999)), 'BasicNFTs: nonexistent token')
       expect(await this.sale.tokenURI(safeBN(0))).to.equal(this.defaultURI)
     })
     it('returns concatenated URI once base URI is set', async () => {
@@ -396,7 +393,7 @@ describe('TrippyNFTs', () => {
     })
     it('still reverts for nonexistent tokens', async () => {
       expect(await this.sale.baseURI()).to.not.equal('')
-      await expectRevert(this.sale.tokenURI(safeBN(999)), 'TrippyNFTs: nonexistent token')
+      await expectRevert(this.sale.tokenURI(safeBN(999)), 'BasicNFTs: nonexistent token')
     })
   })
   describe('gas usage', () => {
@@ -426,8 +423,8 @@ describe('TrippyNFTs', () => {
       this.maxTotal = safeBN(20)
       this.defaultURI = 'placeholder-default-uri'
 
-      this.sale = await TrippyNFTs.new(
-        'Trippy NFT collection',
+      this.sale = await BasicNFTs.new(
+        'Basic NFT collection',
         'TRP',
         stringifyBNObj(this.whitelistedSale),
         stringifyBNObj(this.publicSale),

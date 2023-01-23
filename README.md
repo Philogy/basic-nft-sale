@@ -1,5 +1,6 @@
-# Trippy NFT Sale Contract
-Contract to track and limit sale of the Trippy NFT Collection.
+# Basic NFT Sale Contract
+
+Basic NFT contract with signature based whitelist authentication.
 
 ## Documentation
 

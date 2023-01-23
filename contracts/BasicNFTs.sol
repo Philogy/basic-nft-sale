@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
+contract BasicNFTs is ERC721, Ownable, ReentrancyGuard {
     using ECDSA for bytes32;
     using SignatureChecker for address;
     using Strings for uint256;
@@ -31,12 +31,12 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
     }
 
     /// domain separators
-    // keccak256("trippy-nfts.access.is-whitelisted(address)")
+    // keccak256("basic-nfts.access.is-whitelisted(address)")
     bytes32 internal constant DS_IS_WHITELISTED =
-        0xc6570f378e38907781b14e02a9e9c55342ebe951a8bb72ea05e25cc035c728c6;
-    // keccak256("trippy-nfts.access.captcha-solved(address)")
+        0x29fac16e169dbd91dec98a06bd05b031d01e9b9f8301aa69dcfb3167e9ce478c;
+    // keccak256("basic-nfts.access.captcha-solved(address)")
     bytes32 internal constant DS_CAPTCHA_SOLVED =
-        0xbdb1174521f3a1bc58650f9b7f1d334ba5a5d285784105f22a08b6f5a9600656;
+        0xe9d4ebff93fe7acf5db816c54861c27d4bfc2127bbec2077958592c789487223;
 
     Sale public whitelistedSale;
     Sale public publicSale;
@@ -115,7 +115,7 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
     function tokenURI(uint256 _tokenId)
         public view override returns (string memory)
     {
-        require(_exists(_tokenId), "TrippyNFTs: nonexistent token");
+        require(_exists(_tokenId), "BasicNFTs: nonexistent token");
         string memory baseURI_ = baseURI;
         if (bytes(baseURI_).length == 0) return defaultURI;
         return string(abi.encodePacked(baseURI_, _tokenId.toString()));
@@ -135,19 +135,19 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
 
     function _checkTime(SaleParams storage _params) internal view {
         uint256 timestamp = block.timestamp;
-        require(timestamp >= _params.start, "TrippyNFTs: before sale");
-        require(timestamp <= _params.end, "TrippyNFTs: after sale");
+        require(timestamp >= _params.start, "BasicNFTs: before sale");
+        require(timestamp <= _params.end, "BasicNFTs: after sale");
     }
 
     function _buyForSale(Sale storage _sale) internal returns (uint256 toBeBought) {
         toBeBought = msg.value / price;
-        require(toBeBought >= 1, "TrippyNFTs: must buy atleast 1");
+        require(toBeBought >= 1, "BasicNFTs: must buy atleast 1");
         uint256 userTotalBuys = _sale.buys[msg.sender] + toBeBought;
-        require(userTotalBuys <= _sale.params.userMaxBuys, "TrippyNFTs: user buys maxed out");
+        require(userTotalBuys <= _sale.params.userMaxBuys, "BasicNFTs: user buys maxed out");
         uint256 totalSaleBuys = _sale.totalBuys + toBeBought;
         require(
             totalSaleBuys <= _sale.params.totalMaxBuys,
-            "TrippyNFTs: sale sold out"
+            "BasicNFTs: sale sold out"
         );
         _mintMany(msg.sender, toBeBought);
         totalBuys += toBeBought;
@@ -158,7 +158,7 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
     function _mintMany(address _recipient, uint256 _amount) internal nonReentrant {
         uint256 totalIssued_ = totalIssued;
         uint256 issued = totalIssued_ + _amount;
-        require(issued <= maxTotal, "TrippyNFTs: max issued");
+        require(issued <= maxTotal, "BasicNFTs: max issued");
         for (uint256 i; i < _amount; i++) {
             _safeMint(_recipient, totalIssued_ + i);
         }
@@ -170,7 +170,7 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
     {
         require(
             _verifySig(DS_IS_WHITELISTED, _account, _whitelistedSig),
-            "TrippyNFTs: not whitelisted"
+            "BasicNFTs: not whitelisted"
         );
     }
 
@@ -179,7 +179,7 @@ contract TrippyNFTs is ERC721, Ownable, ReentrancyGuard {
     {
         require(
             _verifySig(DS_CAPTCHA_SOLVED, _account, _captchaSig),
-            "TrippyNFTs: no captcha"
+            "BasicNFTs: no captcha"
         );
     }
 
